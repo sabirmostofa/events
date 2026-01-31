@@ -1,0 +1,89 @@
+version: '3.8'
+
+services:
+  # Infrastructure: Message Broker
+  zookeeper:
+    image: confluentinc/cp-zookeeper:latest
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+
+  kafka:
+    image: confluentinc/cp-kafka:latest
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+
+  # Infrastructure: Database
+    postgres-db:
+        image: postgres:18-alpine
+        environment:
+          POSTGRES_USER: user
+          POSTGRES_PASSWORD: password
+        volumes:
+          - ./init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
+        ports:
+          - "5432:5432"
+
+  # Application Services
+  auth-service:
+    build: ./auth-service
+    depends_on:
+      - postgres-db
+      - kafka
+    environment:
+      DATABASE_URL: postgres://user:password@postgres-db:5432/auth_db
+
+  event-service:
+    build: ./event-service
+    depends_on:
+      - postgres-db
+    environment:
+      DATABASE_URL: postgres://user:password@postgres-db:5432/event_db
+
+  registration-service:
+    build: ./registration-service
+    depends_on:
+      - kafka
+      - postgres-db
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      DATABASE_URL: postgres://user:password@postgres-db:5432/reg_db
+
+  payment-service:
+    build: ./payment-service
+    depends_on:
+      - kafka
+    environment:
+      ADYEN_API_KEY: ${ADYEN_API_KEY}
+      ADYEN_MERCHANT_ACCOUNT: ${ADYEN_MERCHANT_ACCOUNT}
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+
+  artist-service:
+    build: ./artist-service
+    depends_on:
+      - postgres-db
+
+  notification-service:
+    build: ./notification-service
+    depends_on:
+      - kafka
+
+  accounting-service:
+    build: ./accounting-service
+    depends_on:
+      - kafka
+      - postgres-db
+
+  # Frontend
+  frontend:
+    build: ./frontend
+    ports:
+      - "3000:3000"
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:8080
