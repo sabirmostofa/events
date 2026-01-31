@@ -2,6 +2,13 @@ import { pool } from "../config/database";
 import { producer } from "../config/kafka";
 
 export class RegistrationService {
+    async getAllRegistrations() {
+        const result = await pool.query(
+            "SELECT id, participant_name, participant_email, role, status, created_at FROM registrations ORDER BY created_at DESC",
+        );
+        return result.rows;
+    }
+
     async registerUser(eventId: string, userData: any) {
         const client = await pool.connect();
 
@@ -78,6 +85,25 @@ export class RegistrationService {
             throw error;
         } finally {
             client.release();
+        }
+    }
+
+    async updateStatus(id: string, status: string) {
+        const query = `
+        UPDATE registrations 
+        SET status = $1 
+        WHERE id = $2 
+        RETURNING *
+    `;
+        const values = [status, id];
+
+        try {
+            const result = await pool.query(query, values);
+            // result.rows[0] contains the fully updated record
+            return result.rows[0];
+        } catch (error: any) {
+            console.error("❌ SQL Error updating status:", error.message);
+            throw error;
         }
     }
 
